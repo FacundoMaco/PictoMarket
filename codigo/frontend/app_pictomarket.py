@@ -2,6 +2,7 @@ import base64
 import json
 import random
 import re
+import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -65,14 +66,32 @@ def iniciar_reto(indice: int) -> None:
     ss.celebrado = False
     ss.t_ultimo_evento = time.time()
     ss.log_eventos = []
+    ss.msg_n = ss.get("msg_n", 0) + 1
     ss.setdefault("alias", "INVITADO")
     ss.setdefault("max_nivel", 3)
-    con = db.conectar()
-    ss.sesion_id = db.nueva_sesion(con, db.usuario_id(con, ss.alias), reto["id_reto"])
-    con.close()
+    ss.sesion_id = None
     ss.mensaje = {"tipo": "inicio",
                   "texto": f"¡HOLA! VAMOS A {' '.join(palabras_objetivo(reto))}. "
                            f"BUSCA: {CATALOGO[ss.items_restantes[0]]['nombre']}"}
+
+def bd(operacion, *args):
+    """Ejecuta una operación de BD; si falla, el juego sigue sin guardar y se avisa en el panel."""
+    try:
+        con = db.conectar()
+        try:
+            return operacion(con, *args)
+        finally:
+            con.close()
+    except (sqlite3.Error, OSError):
+        st.session_state.bd_error = True
+        return None
+
+def asegurar_sesion(reto: dict) -> None:
+    """La sesión se crea al primer toque: cargar o refrescar la página no ensucia el historial."""
+    ss = st.session_state
+    if ss.sesion_id is None:
+        ss.sesion_id = bd(lambda con: db.nueva_sesion(
+            con, db.usuario_id(con, ss.alias), reto["id_reto"]))
 
 def estado_actual() -> dict:
     ss = st.session_state
@@ -105,6 +124,7 @@ def al_tocar_producto(producto: int) -> None:
     t_ms = int((ahora - ss.t_ultimo_evento) * 1000)
     ss.t_ultimo_evento = ahora
 
+    ss.msg_n += 1
     accion = motor.politica(s_antes, producto, ss.max_nivel)
     nombre = CATALOGO[producto]["nombre"]
     eliminado = None
@@ -127,7 +147,7 @@ def al_tocar_producto(producto: int) -> None:
             eliminado, _ = motor.elegir_distractor(visibles_activos(), reto["distractores"],
                                                    CATALOGO, producto)
             if eliminado is None:
-                accion = "a3"
+                accion = "a3" if ss.max_nivel >= 3 else "a1"
             else:
                 ss.descartados.append(eliminado)
         ss.nivel_pista = max(ss.nivel_pista, {"a1": 1, "a2": 2, "a3": 3}[accion])
@@ -153,19 +173,20 @@ def al_tocar_producto(producto: int) -> None:
         "entropia_despues": round(h_despues, 3),
         "recompensa": None,
     })
-    con = db.conectar()
-    db.registrar_evento(con, ss.sesion_id, {
+    asegurar_sesion(reto)
+    evento = ({
         "t_ms": t_ms, "item_objetivo": objetivo, "item_tocado": producto,
         "categoria_objetivo": CATALOGO[objetivo]["categoria"], "correcto": accion == "a0",
         "accion": accion, "distractor_eliminado": eliminado, "h_antes": h_antes,
         "h_despues": h_despues, "fuera_de_orden": accion == "a0" and producto != objetivo})
-    if not ss.items_restantes:
-        db.marcar_completada(con, ss.sesion_id)
-    con.close()
+    if ss.sesion_id is not None:
+        bd(db.registrar_evento, ss.sesion_id, evento)
+        if not ss.items_restantes:
+            bd(db.marcar_completada, ss.sesion_id)
 
 CSS_BASE = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap');
+/*FUENTES*/
 
 :root {
   --fondo: #F9F6F0; --tinta: #1A1A1A; --tarjeta: #FFFFFF;
@@ -173,6 +194,7 @@ CSS_BASE = """
   --pista: #3D2E00; --pista-suave: #FFF1C2;
   --sombra: 0 6px 0 rgba(26,26,26,.18), 0 14px 30px rgba(26,26,26,.10);
   --fuente: 'Atkinson Hyperlegible', Arial, Helvetica, sans-serif;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 /* --- Ocultar la interfaz propia de Streamlit --- */
@@ -229,10 +251,12 @@ CSS_BASE = """
 div[class*="st-key-card_"] {
   background: transparent !important; border: none !important; box-shadow: none !important;
   padding: 0 !important; position: relative;
-  min-height: 220px; transition: transform .12s ease; margin-bottom: 12px;
+  min-height: 220px; transition: transform 160ms var(--ease-out); margin-bottom: 12px;
 }
-div[class*="st-key-card_"]:hover { transform: translateY(-4px); }
-div[class*="st-key-card_"]:active { transform: translateY(2px); }
+@media (hover: hover) and (pointer: fine) {
+  div[class*="st-key-card_"]:hover { transform: translateY(-4px); }
+}
+div[class*="st-key-card_"]:active { transform: translateY(2px) scale(0.97); }
 
 /* Contenedor del producto que se sienta en el estante */
 .pm-card-wrapper {
@@ -250,13 +274,20 @@ div[class*="st-key-card_"]:active { transform: translateY(2px); }
 
 /* El estante plano vectorizado */
 .pm-estante-madera {
-  width: 120%; /* Sobresale para unir las columnas */
+  width: 100%; align-self: flex-start;
   height: 18px;
   background: #DE9B52; /* Madera clara */
   border-bottom: 6px solid #A66A33; /* Sombra del borde */
   border-top: 2px solid #F3C391; /* Luz superior */
-  position: relative; z-index: 1; margin-left: -10%;
+  position: relative; z-index: 1; margin-left: 0;
 }
+/* En escritorio el estante cruza el hueco entre columnas (gap "large" = 64 px) sin sobresalir de la fila */
+@media (min-width: 641px) {
+  .pm-estante-madera.pos0 { width: calc(100% + 32px); }
+  .pm-estante-madera.pos1 { width: calc(100% + 64px); margin-left: -32px; }
+  .pm-estante-madera.pos2 { width: calc(100% + 32px); margin-left: -32px; }
+}
+.pm-hueco { min-height: 240px; }
 
 /* Etiqueta de precio blanca */
 .pm-etiqueta-precio {
@@ -327,7 +358,25 @@ div[class*="st-key-card_"] div[class*="st-key-btn_"] button:disabled { cursor: d
   border-radius: 18px !important; min-height: 64px; box-shadow: var(--sombra); }
 .st-key-btn_siguiente button p { color: #fff !important; font-size: 24px !important; font-weight: 700; }
 
+/* --- Movimiento: breve, ease-out, solo transform/opacity --- */
+@keyframes pm-entra { from { opacity: 0; transform: translateY(6px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes pm-fade  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pm-fade-b { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pm-entra-b { from { opacity: 0; transform: translateY(6px) scale(0.98); } to { opacity: 1; transform: none; } }
+.pm-agente.p { animation: pm-entra 200ms var(--ease-out); }
+.pm-agente.i { animation: pm-entra-b 200ms var(--ease-out); }
+.pm-carrito .it:last-child { animation: pm-entra 220ms var(--ease-out); }
+.pm-final { animation: pm-entra 260ms var(--ease-out); }
+.pm-final img { animation: pm-entra 260ms var(--ease-out) backwards; }
+.pm-final img:nth-child(2) { animation-delay: 50ms; } .pm-final img:nth-child(3) { animation-delay: 100ms; }
+.pm-final img:nth-child(4) { animation-delay: 150ms; } .pm-final img:nth-child(n+5) { animation-delay: 200ms; }
+.st-key-btn_siguiente button { transition: transform 160ms var(--ease-out); }
+.st-key-btn_siguiente button:active { transform: scale(0.97); }
+
 /* --- Panel del terapeuta (discreto) --- */
+[data-testid="stExpander"] summary, [data-testid="stExpander"] button,
+[data-testid="stExpander"] input, [data-testid="stExpander"] [data-baseweb="select"] > div,
+[data-testid="stExpander"] a { min-height: 44px; }
 [data-testid="stExpander"] details { background: #fff; border: 2px solid #6b6b6b; border-radius: 14px; }
 
 /* --- Pantallas pequeñas (tablet vertical / celular) --- */
@@ -340,17 +389,32 @@ div[class*="st-key-card_"] div[class*="st-key-btn_"] button:disabled { cursor: d
   .pm-mini { width: 92px; } .pm-mini img { width: 56px; height: 56px; }
   .pm-mini .t { font-size: 12px; word-break: keep-all; }
   .pm-agente .ico { font-size: 34px; } .pm-agente .txt { font-size: 21px; }
+  .pm-agente { min-height: 102px; } /* 3 líneas: la grilla no salta entre mensajes */
   div[class*="st-key-card_"] { min-height: 240px; }
+  .pm-hueco { min-height: 268px; }
   .pm-card img { max-width: 160px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  * { animation: none !important; transition: none !important; }
+  * { transition: none !important; }
+  .pm-agente.p, .pm-carrito .it:last-child, .pm-final, .pm-final img { animation: pm-fade 200ms ease !important; }
+  .pm-agente.i { animation: pm-fade-b 200ms ease !important; }
+  div[class*="st-key-card_"] .pm-etiqueta-precio { animation: none !important; }
 }
 @keyframes pm-pulso { 0%,100% { box-shadow: 0 0 0 0 rgba(11,93,30,.55); }
                       50% { box-shadow: 0 0 0 16px rgba(11,93,30,0); } }
 </style>
 """
+
+@st.cache_data
+def css_fuentes() -> str:
+    """Atkinson Hyperlegible (OFL) embebida: sin llamadas de red a terceros."""
+    reglas = []
+    for peso in (400, 700):
+        b64 = base64.b64encode((RAIZ_PROYECTO / "datos" / "fuentes" / f"atkinson-{peso}.woff2").read_bytes()).decode()
+        reglas.append("@font-face { font-family: 'Atkinson Hyperlegible'; font-weight: %d; font-display: swap; "
+                      "src: url(data:font/woff2;base64,%s) format('woff2'); }" % (peso, b64))
+    return "\n".join(reglas)
 
 def css_dinamico() -> str:
     ss = st.session_state
@@ -366,7 +430,7 @@ def css_dinamico() -> str:
     if obj is not None and ss.nivel_pista >= 3:
 
         reglas.append(f".st-key-card_{obj} .pm-etiqueta-precio {{ border: 8px solid var(--exito) !important;"
-                      f" animation: pm-pulso 1.4s ease-in-out infinite; }}")
+                      f" animation: pm-pulso 1.4s ease-in-out 3; }}")
     for p in ss.items_en_carrito:
         reglas.append(f".st-key-card_{p} .pm-producto-area img {{ opacity: 0.3; filter: grayscale(1); }} "
                       f".st-key-card_{p} .pm-etiqueta-precio {{ opacity: 0.6; background: var(--exito-suave); border-color: var(--exito); }}")
@@ -397,11 +461,12 @@ def barra_superior(reto: dict) -> None:
 
 def burbuja_agente() -> None:
     m = st.session_state.mensaje
-    st.markdown(f"<div class='pm-agente {m['tipo']}' role='status' aria-live='polite'>"
+    paridad = "p" if st.session_state.msg_n % 2 else "i"
+    st.markdown(f"<div class='pm-agente {m['tipo']} {paridad}' role='status' aria-live='polite'>"
                 f"<span class='txt'>{m['texto']}</span></div>",
                 unsafe_allow_html=True)
 
-def tarjeta_producto(producto: int) -> None:
+def tarjeta_producto(producto: int, pos: int = 0) -> None:
     ss = st.session_state
     info = CATALOGO[producto]
     en_carrito = producto in ss.items_en_carrito
@@ -424,26 +489,26 @@ def tarjeta_producto(producto: int) -> None:
             f"    {insignia}"
             f"    <img src='{url_pictograma(producto)}' alt='{info['nombre']}'/>"
             f"  </div>"
-            f"  <div class='pm-estante-madera'></div>"
+            f"  <div class='pm-estante-madera pos{pos}'></div>"
             f"  <div class='pm-etiqueta-precio'>"
             f"    <div class='nombre'>{info['nombre']}</div>"
             f"    <div class='precio' aria-label='{info['precio']} monedas'>{html_monedas(info['precio'])}</div>"
             f"  </div>"
             f"</div>", unsafe_allow_html=True)
         st.button(info["nombre"], key=f"btn_{producto}", on_click=al_tocar_producto,
-                  args=(producto,), disabled=en_carrito, use_container_width=True)
+                  args=(producto,), disabled=en_carrito, width='stretch')
 
 def matriz_productos() -> None:
     visibles = st.session_state.productos_visibles
     descartados = st.session_state.descartados
     for inicio in range(0, len(visibles), COLUMNAS_MATRIZ):
         cols = st.columns(COLUMNAS_MATRIZ, gap="large")
-        for col, producto in zip(cols, visibles[inicio:inicio + COLUMNAS_MATRIZ]):
+        for pos, (col, producto) in enumerate(zip(cols, visibles[inicio:inicio + COLUMNAS_MATRIZ])):
             with col:
                 if producto in descartados:
-                    st.markdown("<div style='min-height:240px'></div>", unsafe_allow_html=True)
+                    st.markdown("<div class='pm-hueco'></div>", unsafe_allow_html=True)
                 else:
-                    tarjeta_producto(producto)
+                    tarjeta_producto(producto, pos)
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
 def panel_billetera(reto: dict) -> None:
@@ -479,7 +544,7 @@ def pantalla_final(reto: dict) -> None:
                 f"<div class='fila'>{fotos}</div></div>", unsafe_allow_html=True)
     siguiente = (ss.reto_idx + 1) % len(RETOS)
     st.button("OTRA COMPRA", key="btn_siguiente", on_click=iniciar_reto,
-              args=(siguiente,), use_container_width=True)
+              args=(siguiente,), width='stretch')
 
 def panel_terapeuta() -> None:
     ss = st.session_state
@@ -488,20 +553,22 @@ def panel_terapeuta() -> None:
                      format_func=lambda i: f"{RETOS[i]['id_reto']} (nivel {RETOS[i]['nivel']})",
                      key="selector_reto",
                      on_change=lambda: iniciar_reto(st.session_state.selector_reto))
-        st.text_input("Usuario (alias, sin datos personales)", key="alias_input", value=ss.alias,
-                      on_change=lambda: (st.session_state.update(alias=st.session_state.alias_input.strip().upper() or "INVITADO"),
+        st.text_input("Usuario (alias, sin datos personales). Cambiarlo reinicia el escenario.", max_chars=24, key="alias_input", value=ss.alias,
+                      on_change=lambda: (st.session_state.update(alias=st.session_state.alias_input.strip().upper()[:24] or "INVITADO"),
                                          iniciar_reto(st.session_state.reto_idx)))
         st.select_slider("Ayuda máxima", options=[1, 2, 3], key="max_nivel",
                          format_func=lambda n: {1: "1 · categoría", 2: "2 · + descarte", 3: "3 · + demostración"}[n])
         st.button("Reiniciar escenario", on_click=iniciar_reto, args=(ss.reto_idx,))
         st.page_link("pages/1_Panel_terapeuta.py", label="📊 Progreso por usuario")
+        if ss.get("bd_error"):
+            st.warning("No se pudo guardar en la base de datos: el juego sigue, pero este progreso no quedará registrado.")
         st.caption(f"Errores totales: {ss.errores_totales}")
         st.caption("Estado s actual")
         st.json(estado_actual())
         st.caption("Log de eventos")
         st.json(ss.log_eventos, expanded=False)
 
-st.markdown(CSS_BASE, unsafe_allow_html=True)
+st.markdown(CSS_BASE.replace("/*FUENTES*/", css_fuentes()), unsafe_allow_html=True)
 st.markdown(css_dinamico(), unsafe_allow_html=True)
 
 reto_actual = RETOS[st.session_state.reto_idx]

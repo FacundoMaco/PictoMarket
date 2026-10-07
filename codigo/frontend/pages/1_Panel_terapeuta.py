@@ -26,6 +26,9 @@ if not filas:
     st.stop()
 df = pd.DataFrame(filas)
 hechas = df[df["compras"] > 0]
+if hechas.empty:
+    st.info("Este usuario aún no completó ninguna compra. El progreso aparece desde la primera.")
+    st.stop()
 
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Sesiones", len(df))
@@ -50,5 +53,5 @@ with g2:
         st.write("Sin errores registrados.")
 
 st.subheader("Sesiones")
-st.dataframe(df.drop(columns=["sesion"]), hide_index=True, use_container_width=True)
+st.dataframe(df.drop(columns=["sesion"]), hide_index=True, width='stretch')
 st.caption("Bits descartados = reducción de entropía visual por las pistas de descarte (ID3).")
