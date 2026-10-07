@@ -1,0 +1,68 @@
+{
+  "_fuente": "Informe técnico PictoMarket, sección Datos. Pictogramas: Sergio Palao, Gobierno de Aragón, ARASAAC (CC BY-NC-SA). Precios en monedas: valores de diseño a validar con Kallpa.",
+  "url_pictograma": "https://static.arasaac.org/pictograms/{id}/{id}_300.png",
+
+  "categorias": {
+    "lacteos":  {"nombre": "LÁCTEOS Y HUEVOS",  "icono": "🥛", "color": "#004C99"},
+    "frutas":   {"nombre": "FRUTAS Y VERDURAS", "icono": "🍎", "color": "#1B5E20"},
+    "panaderia":{"nombre": "PANADERÍA",         "icono": "🥖", "color": "#7A3E00"},
+    "carnes":   {"nombre": "CARNES",            "icono": "🍗", "color": "#8B0000"},
+    "aseo":     {"nombre": "ASEO",              "icono": "🧼", "color": "#4A148C"}
+  },
+
+  "catalogo": {
+    "2445":  {"nombre": "LECHE",            "categoria": "lacteos",   "conservacion": "refrigerado", "precio": 2},
+    "2618":  {"nombre": "YOGUR",            "categoria": "lacteos",   "conservacion": "refrigerado", "precio": 1},
+    "2541":  {"nombre": "QUESO",            "categoria": "lacteos",   "conservacion": "refrigerado", "precio": 2},
+    "2461":  {"nombre": "MANTEQUILLA",      "categoria": "lacteos",   "conservacion": "refrigerado", "precio": 2},
+    "2427":  {"nombre": "HUEVO",            "categoria": "lacteos",   "conservacion": "refrigerado", "precio": 1},
+
+    "2462":  {"nombre": "MANZANA",          "categoria": "frutas",    "conservacion": "ambiente",    "precio": 1},
+    "2530":  {"nombre": "PLÁTANO",          "categoria": "frutas",    "conservacion": "ambiente",    "precio": 1},
+    "2483":  {"nombre": "NARANJA",          "categoria": "frutas",    "conservacion": "ambiente",    "precio": 1},
+    "2400":  {"nombre": "FRESA",            "categoria": "frutas",    "conservacion": "refrigerado", "precio": 2},
+    "3247":  {"nombre": "UVA",              "categoria": "frutas",    "conservacion": "ambiente",    "precio": 2},
+    "2594":  {"nombre": "TOMATE",           "categoria": "frutas",    "conservacion": "ambiente",    "precio": 1},
+    "2619":  {"nombre": "ZANAHORIA",        "categoria": "frutas",    "conservacion": "ambiente",    "precio": 1},
+    "2446":  {"nombre": "LECHUGA",          "categoria": "frutas",    "conservacion": "ambiente",    "precio": 1},
+    "2503":  {"nombre": "PAPA",             "categoria": "frutas",    "conservacion": "ambiente",    "precio": 1},
+
+    "2494":  {"nombre": "PAN",              "categoria": "panaderia", "conservacion": "ambiente",    "precio": 1},
+    "2865":  {"nombre": "PAN DE MOLDE",     "categoria": "panaderia", "conservacion": "ambiente",    "precio": 2},
+    "8312":  {"nombre": "GALLETA",          "categoria": "panaderia", "conservacion": "ambiente",    "precio": 1},
+    "8042":  {"nombre": "BIZCOCHO",         "categoria": "panaderia", "conservacion": "ambiente",    "precio": 2},
+
+    "8655":  {"nombre": "PECHUGA DE POLLO", "categoria": "carnes",    "conservacion": "refrigerado", "precio": 3},
+    "2534":  {"nombre": "MUSLO DE POLLO",   "categoria": "carnes",    "conservacion": "refrigerado", "precio": 2},
+    "2519":  {"nombre": "PESCADO",          "categoria": "carnes",    "conservacion": "refrigerado", "precio": 3},
+    "35147": {"nombre": "FILETE",           "categoria": "carnes",    "conservacion": "refrigerado", "precio": 3},
+    "2433":  {"nombre": "JAMÓN",            "categoria": "carnes",    "conservacion": "refrigerado", "precio": 2},
+    "6647":  {"nombre": "SALCHICHA",        "categoria": "carnes",    "conservacion": "refrigerado", "precio": 2},
+
+    "2964":  {"nombre": "JABÓN",            "categoria": "aseo",      "conservacion": "ambiente",    "precio": 1},
+    "2699":  {"nombre": "CHAMPÚ",           "categoria": "aseo",      "conservacion": "ambiente",    "precio": 2},
+    "2862":  {"nombre": "PAPEL HIGIÉNICO",  "categoria": "aseo",      "conservacion": "ambiente",    "precio": 1},
+    "2858":  {"nombre": "DENTÍFRICO",       "categoria": "aseo",      "conservacion": "ambiente",    "precio": 1},
+    "2694":  {"nombre": "CEPILLO",          "categoria": "aseo",      "conservacion": "ambiente",    "precio": 1},
+    "7021":  {"nombre": "DETERGENTE",       "categoria": "aseo",      "conservacion": "ambiente",    "precio": 2}
+  },
+
+  "retos": [
+    {
+      "id_reto": "desayuno_saludable",
+      "nivel": 1,
+      "objetivo": "[COMPRAR] [PARA] [DESAYUNO]",
+      "presupuesto": 6,
+      "lista_correcta": [2445, 2494, 2462],
+      "distractores": [2618, 2619, 8312, 2964, 2699, 7021]
+    },
+    {
+      "id_reto": "almuerzo_casa",
+      "nivel": 2,
+      "objetivo": "[COMPRAR] [PARA] [ALMUERZO]",
+      "presupuesto": 8,
+      "lista_correcta": [8655, 2503, 2594, 2446],
+      "distractores": [2534, 2462, 2541, 2964, 2699, 2858]
+    }
+  ]
+}
