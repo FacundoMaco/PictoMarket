@@ -1,13 +1,19 @@
+import base64
 import json
-import math
 import random
 import re
+import sys
 import time
 from pathlib import Path
 
 import streamlit as st
 
 RAIZ_PROYECTO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(RAIZ_PROYECTO / "codigo"))
+from backend import db  # noqa: E402
+from ia_models import motor  # noqa: E402
+
+RUTA_PICTOS = RAIZ_PROYECTO / "datos" / "pictogramas"
 RUTA_ESCENARIOS = RAIZ_PROYECTO / "datos" / "escenarios.json"
 
 COLUMNAS_MATRIZ = 3
@@ -28,7 +34,12 @@ CATALOGO = DATOS["catalogo"]
 CATEGORIAS = DATOS["categorias"]
 RETOS = DATOS["retos"]
 
+@st.cache_data
 def url_pictograma(id_arasaac: int) -> str:
+    """Pictograma local embebido (funciona sin internet); si falta, usa la URL de ARASAAC."""
+    local = RUTA_PICTOS / f"{id_arasaac}.png"
+    if local.exists():
+        return "data:image/png;base64," + base64.b64encode(local.read_bytes()).decode()
     return DATOS["url_pictograma"].format(id=id_arasaac)
 
 def palabras_objetivo(reto: dict) -> list:
@@ -47,12 +58,18 @@ def iniciar_reto(indice: int) -> None:
     ss.intentos_fallidos = 0
     ss.nivel_pista = 0
 
-    ss.productos_visibles = matriz
+    ss.productos_visibles = matriz      # posiciones fijas de la grilla
+    ss.descartados = []                 # huecos: el descarte no reacomoda la grilla
     ss.monedas = reto["presupuesto"]
     ss.errores_totales = 0
     ss.celebrado = False
     ss.t_ultimo_evento = time.time()
     ss.log_eventos = []
+    ss.setdefault("alias", "INVITADO")
+    ss.setdefault("max_nivel", 3)
+    con = db.conectar()
+    ss.sesion_id = db.nueva_sesion(con, db.usuario_id(con, ss.alias), reto["id_reto"])
+    con.close()
     ss.mensaje = {"tipo": "inicio",
                   "texto": f"¡HOLA! VAMOS A {' '.join(palabras_objetivo(reto))}. "
                            f"BUSCA: {CATALOGO[ss.items_restantes[0]]['nombre']}"}
@@ -73,40 +90,22 @@ def item_objetivo():
 if "reto_idx" not in st.session_state:
     iniciar_reto(0)
 
-def politica_agente(estado: dict, producto_tocado: int, reto: dict) -> str:
-    if producto_tocado in estado["items_restantes"]:
-        return "a0"
-    fallos = estado["intentos_fallidos"] + 1
-    if fallos == 1:
-        return "a1"
-    if fallos == 2:
-        return "a2"
-    return "a3"
-
-def id3_elegir_distractor(visibles: list, objetivo: int, reto: dict,
-                          catalogo: dict, producto_tocado: int):
-    candidatos = [p for p in visibles if p in reto["distractores"]]
-    if not candidatos:
-        return None
-    if producto_tocado in candidatos:
-        return producto_tocado
-    return random.choice(candidatos)
-
-def entropia_visual(n_candidatos: int) -> float:
-    return round(math.log2(n_candidatos), 3) if n_candidatos > 0 else 0.0
+def visibles_activos() -> list:
+    ss = st.session_state
+    return [p for p in ss.productos_visibles if p not in ss.descartados]
 
 def al_tocar_producto(producto: int) -> None:
     ss = st.session_state
     reto = RETOS[ss.reto_idx]
     s_antes = estado_actual()
     objetivo = item_objetivo()
-    h_antes = entropia_visual(len(ss.productos_visibles))
+    h_antes = motor.entropia(visibles_activos(), CATALOGO)
 
     ahora = time.time()
     t_ms = int((ahora - ss.t_ultimo_evento) * 1000)
     ss.t_ultimo_evento = ahora
 
-    accion = politica_agente(s_antes, producto, reto)
+    accion = motor.politica(s_antes, producto, ss.max_nivel)
     nombre = CATALOGO[producto]["nombre"]
     eliminado = None
 
@@ -125,12 +124,12 @@ def al_tocar_producto(producto: int) -> None:
         ss.errores_totales += 1
         cat = CATEGORIAS[CATALOGO[objetivo]["categoria"]]
         if accion == "a2":
-            eliminado = id3_elegir_distractor(ss.productos_visibles, objetivo, reto,
-                                              CATALOGO, producto)
+            eliminado, _ = motor.elegir_distractor(visibles_activos(), reto["distractores"],
+                                                   CATALOGO, producto)
             if eliminado is None:
                 accion = "a3"
             else:
-                ss.productos_visibles.remove(eliminado)
+                ss.descartados.append(eliminado)
         ss.nivel_pista = max(ss.nivel_pista, {"a1": 1, "a2": 2, "a3": 3}[accion])
 
         textos = {
@@ -140,6 +139,7 @@ def al_tocar_producto(producto: int) -> None:
         }
         ss.mensaje = {"tipo": "pista", "texto": textos[accion]}
 
+    h_despues = motor.entropia(visibles_activos(), CATALOGO)
     ss.log_eventos.append({
         "escenario_id": reto["id_reto"],
         "t_ms": t_ms,
@@ -149,10 +149,19 @@ def al_tocar_producto(producto: int) -> None:
         "estado_s": s_antes,
         "accion_agente": accion,
         "distractor_eliminado": eliminado,
-        "entropia_antes": h_antes,
-        "entropia_despues": entropia_visual(len(ss.productos_visibles)),
+        "entropia_antes": round(h_antes, 3),
+        "entropia_despues": round(h_despues, 3),
         "recompensa": None,
     })
+    con = db.conectar()
+    db.registrar_evento(con, ss.sesion_id, {
+        "t_ms": t_ms, "item_objetivo": objetivo, "item_tocado": producto,
+        "categoria_objetivo": CATALOGO[objetivo]["categoria"], "correcto": accion == "a0",
+        "accion": accion, "distractor_eliminado": eliminado, "h_antes": h_antes,
+        "h_despues": h_despues, "fuera_de_orden": accion == "a0" and producto != objetivo})
+    if not ss.items_restantes:
+        db.marcar_completada(con, ss.sesion_id)
+    con.close()
 
 CSS_BASE = """
 <style>
@@ -426,11 +435,15 @@ def tarjeta_producto(producto: int) -> None:
 
 def matriz_productos() -> None:
     visibles = st.session_state.productos_visibles
+    descartados = st.session_state.descartados
     for inicio in range(0, len(visibles), COLUMNAS_MATRIZ):
         cols = st.columns(COLUMNAS_MATRIZ, gap="large")
         for col, producto in zip(cols, visibles[inicio:inicio + COLUMNAS_MATRIZ]):
             with col:
-                tarjeta_producto(producto)
+                if producto in descartados:
+                    st.markdown("<div style='min-height:240px'></div>", unsafe_allow_html=True)
+                else:
+                    tarjeta_producto(producto)
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
 def panel_billetera(reto: dict) -> None:
@@ -475,7 +488,13 @@ def panel_terapeuta() -> None:
                      format_func=lambda i: f"{RETOS[i]['id_reto']} (nivel {RETOS[i]['nivel']})",
                      key="selector_reto",
                      on_change=lambda: iniciar_reto(st.session_state.selector_reto))
+        st.text_input("Usuario (alias, sin datos personales)", key="alias_input", value=ss.alias,
+                      on_change=lambda: (st.session_state.update(alias=st.session_state.alias_input.strip().upper() or "INVITADO"),
+                                         iniciar_reto(st.session_state.reto_idx)))
+        st.select_slider("Ayuda máxima", options=[1, 2, 3], key="max_nivel",
+                         format_func=lambda n: {1: "1 · categoría", 2: "2 · + descarte", 3: "3 · + demostración"}[n])
         st.button("Reiniciar escenario", on_click=iniciar_reto, args=(ss.reto_idx,))
+        st.page_link("pages/1_Panel_terapeuta.py", label="📊 Progreso por usuario")
         st.caption(f"Errores totales: {ss.errores_totales}")
         st.caption("Estado s actual")
         st.json(estado_actual())

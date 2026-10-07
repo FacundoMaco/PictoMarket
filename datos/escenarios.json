@@ -7,7 +7,8 @@
     "frutas":   {"nombre": "FRUTAS Y VERDURAS", "icono": "🍎", "color": "#1B5E20"},
     "panaderia":{"nombre": "PANADERÍA",         "icono": "🥖", "color": "#7A3E00"},
     "carnes":   {"nombre": "CARNES",            "icono": "🍗", "color": "#8B0000"},
-    "aseo":     {"nombre": "ASEO",              "icono": "🧼", "color": "#4A148C"}
+    "aseo":     {"nombre": "ASEO",              "icono": "🧼", "color": "#4A148C"},
+    "abarrotes":{"nombre": "ABARROTES",         "icono": "🍚", "color": "#00695C"}
   },
 
   "catalogo": {
@@ -44,7 +45,15 @@
     "2862":  {"nombre": "PAPEL HIGIÉNICO",  "categoria": "aseo",      "conservacion": "ambiente",    "precio": 1},
     "2858":  {"nombre": "DENTÍFRICO",       "categoria": "aseo",      "conservacion": "ambiente",    "precio": 1},
     "2694":  {"nombre": "CEPILLO",          "categoria": "aseo",      "conservacion": "ambiente",    "precio": 1},
-    "7021":  {"nombre": "DETERGENTE",       "categoria": "aseo",      "conservacion": "ambiente",    "precio": 2}
+    "7021":  {"nombre": "DETERGENTE",       "categoria": "aseo",      "conservacion": "ambiente",    "precio": 2},
+
+    "6911":  {"nombre": "ARROZ",            "categoria": "abarrotes", "conservacion": "ambiente",    "precio": 2},
+    "6918":  {"nombre": "ATÚN",             "categoria": "abarrotes", "conservacion": "ambiente",    "precio": 3},
+    "8584":  {"nombre": "FIDEOS",           "categoria": "abarrotes", "conservacion": "ambiente",    "precio": 1},
+    "2323":  {"nombre": "CEBOLLA",          "categoria": "frutas",    "conservacion": "ambiente",    "precio": 1},
+    "3022":  {"nombre": "LIMÓN",            "categoria": "frutas",    "conservacion": "ambiente",    "precio": 1},
+    "8009":  {"nombre": "PALTA",            "categoria": "frutas",    "conservacion": "ambiente",    "precio": 2},
+    "7150":  {"nombre": "CHOCLO",           "categoria": "frutas",    "conservacion": "ambiente",    "precio": 1}
   },
 
   "retos": [
@@ -63,6 +72,14 @@
       "presupuesto": 8,
       "lista_correcta": [8655, 2503, 2594, 2446],
       "distractores": [2534, 2462, 2541, 2964, 2699, 2858]
+    },
+    {
+      "id_reto": "bodega_menu",
+      "nivel": 3,
+      "objetivo": "[COMPRAR] [EN] [LA] [BODEGA]",
+      "presupuesto": 8,
+      "lista_correcta": [6911, 6918, 2323, 3022],
+      "distractores": [8584, 8009, 7150, 2964, 2618]
     }
   ]
 }
